@@ -64,7 +64,7 @@ class Aura;
 // because for change amount operation packets will not be send
 // aura effect handlers shouldn't contain any AuraEffect or Aura object modifications
 
-pAuraEffectHandler AuraEffectHandler[TOTAL_AURAS]=
+NonDefaultConstructible<pAuraEffectHandler> AuraEffectHandler[TOTAL_AURAS]=
 {
     &AuraEffect::HandleNULL,                                      //  0 SPELL_AURA_NONE
     &AuraEffect::HandleBindSight,                                 //  1 SPELL_AURA_BIND_SIGHT
@@ -351,7 +351,7 @@ pAuraEffectHandler AuraEffectHandler[TOTAL_AURAS]=
     &AuraEffect::HandleAuraIncreaseBaseHealthPercent,             //282 SPELL_AURA_INCREASE_BASE_HEALTH_PERCENT
     &AuraEffect::HandleNoImmediateEffect,                         //283 SPELL_AURA_MOD_HEALING_RECEIVED       implemented in Unit::SpellHealingBonus
     &AuraEffect::HandleAuraLinked,                                //284 SPELL_AURA_LINKED
-    &AuraEffect::HandleAuraModAttackPowerOfArmor,                 //285 SPELL_AURA_MOD_ATTACK_POWER_OF_ARMOR  implemented in Player::UpdateAttackPowerAndDamage
+    &AuraEffect::HandleAuraLinked,                                //285 SPELL_AURA_LINKED_2
     &AuraEffect::HandleNoImmediateEffect,                         //286 SPELL_AURA_ABILITY_PERIODIC_CRIT implemented in AuraEffect::PeriodicTick
     &AuraEffect::HandleNoImmediateEffect,                         //287 SPELL_AURA_DEFLECT_SPELLS             implemented in Unit::MagicSpellHitResult and Unit::MeleeSpellHitResult
     &AuraEffect::HandleNoImmediateEffect,                         //288 SPELL_AURA_IGNORE_HIT_DIRECTION  implemented in Unit::MagicSpellHitResult and Unit::MeleeSpellHitResult Unit::RollMeleeOutcomeAgainst
@@ -391,7 +391,7 @@ pAuraEffectHandler AuraEffectHandler[TOTAL_AURAS]=
     &AuraEffect::HandleNoImmediateEffect,                         //322 SPELL_AURA_INTERFERE_TARGETTING implemented in Spell::CheckCast
     &AuraEffect::HandleUnused,                                    //323 unused (4.3.4)
     &AuraEffect::HandleNULL,                                      //324 SPELL_AURA_324
-    &AuraEffect::HandleUnused,                                    //325 unused (4.3.4)
+    &AuraEffect::HandleUnused,                                    //325 SPELL_AURA_LEARN_PVP_TALENT
     &AuraEffect::HandlePhaseGroup,                                //326 SPELL_AURA_PHASE_GROUP
     &AuraEffect::HandleUnused,                                    //327 unused (4.3.4)
     &AuraEffect::HandleNULL,                                      //328 SPELL_AURA_TRIGGER_SPELL_ON_POWER_PCT
@@ -565,7 +565,7 @@ pAuraEffectHandler AuraEffectHandler[TOTAL_AURAS]=
 AuraEffect::AuraEffect(Aura* base, uint32 effIndex, int32 *baseAmount, Unit* caster) :
 m_base(base), m_spellInfo(base->GetSpellInfo()),
 _effectInfo(base->GetSpellEffectInfo(effIndex)),
-m_baseAmount(baseAmount ? *baseAmount : _effectInfo->CalcBaseValue(caster, base->GetType() == UNIT_AURA_TYPE ? base->GetOwner()->ToUnit() : nullptr, base->GetCastItemLevel())),
+m_baseAmount(baseAmount ? *baseAmount : _effectInfo->CalcBaseValue(caster, base->GetType() == UNIT_AURA_TYPE ? base->GetOwner()->ToUnit() : nullptr, base->GetCastItemId(), base->GetCastItemLevel())),
 m_damage(0), m_critChance(0.0f), m_donePct(1.0f),
 m_spellmod(NULL), m_periodicTimer(0), m_tickNumber(0), m_effIndex(effIndex),
 m_canBeRecalculated(true), m_isPeriodic(false)
@@ -611,7 +611,7 @@ int32 AuraEffect::CalculateAmount(Unit* caster)
     int32 amount = 0;
 
     if (!m_spellInfo->HasAttribute(SPELL_ATTR8_MASTERY_SPECIALIZATION) || G3D::fuzzyEq(GetSpellEffectInfo()->BonusCoefficient, 0.0f))
-        amount = GetSpellEffectInfo()->CalcValue(caster, &m_baseAmount, GetBase()->GetOwner()->ToUnit(), nullptr, GetBase()->GetCastItemLevel());
+        amount = GetSpellEffectInfo()->CalcValue(caster, &m_baseAmount, GetBase()->GetOwner()->ToUnit(), nullptr, GetBase()->GetCastItemId(), GetBase()->GetCastItemLevel());
     else if (caster && caster->GetTypeId() == TYPEID_PLAYER)
         amount = int32(caster->ToPlayer()->m_activePlayerData->Mastery * GetSpellEffectInfo()->BonusCoefficient);
 
@@ -830,7 +830,7 @@ void AuraEffect::HandleEffect(AuraApplication * aurApp, uint8 mode, bool apply)
     if ((apply && aurApp->GetRemoveMode()) || prevented)
         return;
 
-    (*this.*AuraEffectHandler[GetAuraType()])(aurApp, mode, apply);
+    (*this.*AuraEffectHandler[GetAuraType()].Value)(aurApp, mode, apply);
 
     // check if script events have removed the aura or if default effect prevention was requested
     if (apply && aurApp->GetRemoveMode())
@@ -4178,18 +4178,6 @@ void AuraEffect::HandleAuraModRangedAttackPowerPercent(AuraApplication const* au
     target->HandleStatModifier(UNIT_MOD_ATTACK_POWER_RANGED, TOTAL_PCT, float(GetAmount()), apply);
 }
 
-void AuraEffect::HandleAuraModAttackPowerOfArmor(AuraApplication const* aurApp, uint8 mode, bool /*apply*/) const
-{
-    if (!(mode & (AURA_EFFECT_HANDLE_CHANGE_AMOUNT_MASK | AURA_EFFECT_HANDLE_STAT)))
-        return;
-
-    Unit* target = aurApp->GetTarget();
-
-    // Recalculate bonus
-    if (target->GetTypeId() == TYPEID_PLAYER)
-        target->ToPlayer()->UpdateAttackPowerAndDamage(false);
-}
-
 /********************************/
 /***        DAMAGE BONUS      ***/
 /********************************/
@@ -5225,7 +5213,7 @@ void AuraEffect::HandlePeriodicTriggerSpellAuraTick(Unit* target, Unit* caster) 
                             if (!creature->GetCreatureTemplate()->SkinLootId)
                                 return;
 
-                            player->AutoStoreLoot(creature->GetCreatureTemplate()->SkinLootId, LootTemplates_Skinning, true);
+                            player->AutoStoreLoot(creature->GetCreatureTemplate()->SkinLootId, LootTemplates_Skinning, ItemContext::NONE, true);
 
                             creature->DespawnOrUnsummon();
                         }

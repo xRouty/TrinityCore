@@ -582,6 +582,11 @@ namespace UF
             return std::end(_values);
         }
 
+        std::size_t size() const
+        {
+            return Size;
+        }
+
         T const& operator[](uint32 index) const
         {
             return _values[index];
@@ -613,6 +618,11 @@ namespace UF
         typename std::vector<T>::const_iterator end() const
         {
             return _values.end();
+        }
+
+        bool empty() const
+        {
+            return _values.empty();
         }
 
         std::size_t size() const

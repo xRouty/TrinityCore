@@ -299,6 +299,10 @@ public:
 private:
     struct StaticData
     {
+        StaticData(SpellTargetObjectTypes objectType, SpellTargetReferenceTypes referenceType, SpellTargetSelectionCategories selectionCategory,
+            SpellTargetCheckTypes checkType, SpellTargetDirectionTypes directionType) : ObjectType(objectType), ReferenceType(referenceType),
+            SelectionCategory(selectionCategory), SelectionCheckType(checkType), DirectionType(directionType) { }
+
         SpellTargetObjectTypes ObjectType;    // type of object returned by target type
         SpellTargetReferenceTypes ReferenceType; // defines which object is used as a reference when selecting target
         SpellTargetSelectionCategories SelectionCategory;
@@ -372,8 +376,8 @@ public:
     bool IsFarDestTargetEffect() const;
     bool IsUnitOwnedAuraEffect() const;
 
-    int32 CalcValue(Unit const* caster = nullptr, int32 const* basePoints = nullptr, Unit const* target = nullptr, float* variance = nullptr, int32 itemLevel = -1) const;
-    int32 CalcBaseValue(Unit const* caster, Unit const* target, int32 itemLevel) const;
+    int32 CalcValue(Unit const* caster = nullptr, int32 const* basePoints = nullptr, Unit const* target = nullptr, float* variance = nullptr, uint32 castItemId = 0, int32 itemLevel = -1) const;
+    int32 CalcBaseValue(Unit const* caster, Unit const* target, uint32 itemId, int32 itemLevel) const;
     float CalcValueMultiplier(Unit* caster, Spell* spell = NULL) const;
     float CalcDamageMultiplier(Unit* caster, Spell* spell = NULL) const;
 
@@ -393,6 +397,9 @@ public:
 private:
     struct StaticData
     {
+        StaticData(SpellEffectImplicitTargetTypes implicitTargetType, SpellTargetObjectTypes usedTargetObjectType)
+            : ImplicitTargetType(implicitTargetType), UsedTargetObjectType(usedTargetObjectType) { }
+
         SpellEffectImplicitTargetTypes ImplicitTargetType; // defines what target can be added to effect target list if there's no valid target type provided for effect
         SpellTargetObjectTypes UsedTargetObjectType; // defines valid target object type for spell effect
     };

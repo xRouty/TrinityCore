@@ -20,6 +20,7 @@
 #include "DatabaseEnv.h"
 #include "DB2LoadInfo.h"
 #include "Hash.h"
+#include "ItemTemplate.h"
 #include "IteratorPair.h"
 #include "Log.h"
 #include "ObjectDefines.h"
@@ -55,6 +56,18 @@ DB2Storage<ArtifactQuestXPEntry>                sArtifactQuestXPStore("ArtifactQ
 DB2Storage<ArtifactTierEntry>                   sArtifactTierStore("ArtifactTier.db2", ArtifactTierLoadInfo::Instance());
 DB2Storage<ArtifactUnlockEntry>                 sArtifactUnlockStore("ArtifactUnlock.db2", ArtifactUnlockLoadInfo::Instance());
 DB2Storage<AuctionHouseEntry>                   sAuctionHouseStore("AuctionHouse.db2", AuctionHouseLoadInfo::Instance());
+DB2Storage<AzeriteEmpoweredItemEntry>           sAzeriteEmpoweredItemStore("AzeriteEmpoweredItem.db2", AzeriteEmpoweredItemLoadInfo::Instance());
+DB2Storage<AzeriteEssenceEntry>                 sAzeriteEssenceStore("AzeriteEssence.db2", AzeriteEssenceLoadInfo::Instance());
+DB2Storage<AzeriteEssencePowerEntry>            sAzeriteEssencePowerStore("AzeriteEssencePower.db2", AzeriteEssencePowerLoadInfo::Instance());
+DB2Storage<AzeriteItemEntry>                    sAzeriteItemStore("AzeriteItem.db2", AzeriteItemLoadInfo::Instance());
+DB2Storage<AzeriteItemMilestonePowerEntry>      sAzeriteItemMilestonePowerStore("AzeriteItemMilestonePower.db2", AzeriteItemMilestonePowerLoadInfo::Instance());
+DB2Storage<AzeriteKnowledgeMultiplierEntry>     sAzeriteKnowledgeMultiplierStore("AzeriteKnowledgeMultiplier.db2", AzeriteKnowledgeMultiplierLoadInfo::Instance());
+DB2Storage<AzeriteLevelInfoEntry>               sAzeriteLevelInfoStore("AzeriteLevelInfo.db2", AzeriteLevelInfoLoadInfo::Instance());
+DB2Storage<AzeritePowerEntry>                   sAzeritePowerStore("AzeritePower.db2", AzeritePowerLoadInfo::Instance());
+DB2Storage<AzeritePowerSetMemberEntry>          sAzeritePowerSetMemberStore("AzeritePowerSetMember.db2", AzeritePowerSetMemberLoadInfo::Instance());
+DB2Storage<AzeriteTierUnlockEntry>              sAzeriteTierUnlockStore("AzeriteTierUnlock.db2", AzeriteTierUnlockLoadInfo::Instance());
+DB2Storage<AzeriteTierUnlockSetEntry>           sAzeriteTierUnlockSetStore("AzeriteTierUnlockSet.db2", AzeriteTierUnlockSetLoadInfo::Instance());
+DB2Storage<AzeriteUnlockMappingEntry>           sAzeriteUnlockMappingStore("AzeriteUnlockMapping.db2", AzeriteUnlockMappingLoadInfo::Instance());
 DB2Storage<BankBagSlotPricesEntry>              sBankBagSlotPricesStore("BankBagSlotPrices.db2", BankBagSlotPricesLoadInfo::Instance());
 DB2Storage<BannedAddonsEntry>                   sBannedAddonsStore("BannedAddons.db2", BannedAddonsLoadInfo::Instance());
 DB2Storage<BarberShopStyleEntry>                sBarberShopStyleStore("BarberShopStyle.db2", BarberShopStyleLoadInfo::Instance());
@@ -216,6 +229,7 @@ DB2Storage<SkillLineAbilityEntry>               sSkillLineAbilityStore("SkillLin
 DB2Storage<SkillRaceClassInfoEntry>             sSkillRaceClassInfoStore("SkillRaceClassInfo.db2", SkillRaceClassInfoLoadInfo::Instance());
 DB2Storage<SoundKitEntry>                       sSoundKitStore("SoundKit.db2", SoundKitLoadInfo::Instance());
 DB2Storage<SpecializationSpellsEntry>           sSpecializationSpellsStore("SpecializationSpells.db2", SpecializationSpellsLoadInfo::Instance());
+DB2Storage<SpecSetMemberEntry>                  sSpecSetMemberStore("SpecSetMember.db2", SpecSetMemberLoadInfo::Instance());
 DB2Storage<SpellAuraOptionsEntry>               sSpellAuraOptionsStore("SpellAuraOptions.db2", SpellAuraOptionsLoadInfo::Instance());
 DB2Storage<SpellAuraRestrictionsEntry>          sSpellAuraRestrictionsStore("SpellAuraRestrictions.db2", SpellAuraRestrictionsLoadInfo::Instance());
 DB2Storage<SpellCastTimesEntry>                 sSpellCastTimesStore("SpellCastTimes.db2", SpellCastTimesLoadInfo::Instance());
@@ -291,6 +305,8 @@ struct ItemLevelSelectorQualityEntryComparator
     static bool Compare(ItemLevelSelectorQualityEntry const* left, ItemLevelSelectorQualityEntry const* right);
 };
 
+void LoadAzeriteEmpoweredItemUnlockMappings(std::unordered_map<int32, std::vector<AzeriteUnlockMappingEntry const*>> const& azeriteUnlockMappingsBySet, uint32 itemId);
+
 typedef std::map<uint32 /*hash*/, DB2StorageBase*> StorageMap;
 typedef std::unordered_map<uint32 /*areaGroupId*/, std::vector<uint32/*areaId*/>> AreaGroupMemberContainer;
 typedef std::unordered_map<uint32, std::vector<ArtifactPowerEntry const*>> ArtifactPowersContainer;
@@ -352,6 +368,13 @@ namespace
     ArtifactPowersContainer _artifactPowers;
     ArtifactPowerLinksContainer _artifactPowerLinks;
     ArtifactPowerRanksContainer _artifactPowerRanks;
+    std::unordered_map<uint32 /*itemId*/, AzeriteEmpoweredItemEntry const*> _azeriteEmpoweredItems;
+    std::unordered_map<std::pair<uint32 /*azeriteEssenceId*/, uint32 /*rank*/>, AzeriteEssencePowerEntry const*> _azeriteEssencePowersByIdAndRank;
+    std::vector<AzeriteItemMilestonePowerEntry const*> _azeriteItemMilestonePowers;
+    std::array<AzeriteItemMilestonePowerEntry const*, MAX_AZERITE_ESSENCE_SLOT> _azeriteItemMilestonePowerByEssenceSlot;
+    std::unordered_map<uint32 /*azeritePowerSetId*/, std::vector<AzeritePowerSetMemberEntry const*>> _azeritePowers;
+    std::unordered_map<std::pair<uint32 /*azeriteUnlockSetId*/, ItemContext>, std::array<uint8, MAX_AZERITE_EMPOWERED_TIER>> _azeriteTierUnlockLevels;
+    std::unordered_map<std::pair<uint32 /*itemId*/, ItemContext>, AzeriteUnlockMappingEntry const*> _azeriteUnlockMappings;
     std::set<std::tuple<uint8, uint8, uint32>> _characterFacialHairStyles;
     std::multimap<std::tuple<uint8, uint8, CharBaseSectionVariation>, CharSectionsEntry const*> _charSections;
     CharStartOutfitContainer _charStartOutfits;
@@ -395,6 +418,7 @@ namespace
     std::unordered_map<uint32, std::vector<SkillLineAbilityEntry const*>> _skillLineAbilitiesBySkillupSkill;
     SkillRaceClassInfoContainer _skillRaceClassInfoBySkill;
     SpecializationSpellsContainer _specializationSpellsBySpec;
+    std::unordered_set<std::pair<int32, uint32>> _specsBySpecSet;
     std::unordered_set<uint8> _spellFamilyNames;
     SpellPowerContainer _spellPowers;
     SpellPowerDifficultyContainer _spellPowerDifficulties;
@@ -420,8 +444,18 @@ inline void LoadDB2(uint32& availableDb2Locales, std::vector<std::string>& errli
     {
         std::string clientMetaString, ourMetaString;
         for (std::size_t i = 0; i < loadInfo->Meta->FieldCount; ++i)
+        {
             for (std::size_t j = 0; j < loadInfo->Meta->Fields[i].ArraySize; ++j)
+            {
+                if (i >= loadInfo->Meta->FileFieldCount && int32(i) == loadInfo->Meta->ParentIndexField)
+                {
+                    clientMetaString += FT_INT;
+                    continue;
+                }
+
                 clientMetaString += loadInfo->Meta->Fields[i].Type;
+            }
+        }
 
         for (std::size_t i = loadInfo->Meta->HasIndexFieldInData() ? 0 : 1; i < loadInfo->FieldCount; ++i)
             ourMetaString += loadInfo->Fields[i].Type;
@@ -510,6 +544,18 @@ void DB2Manager::LoadStores(std::string const& dataPath, uint32 defaultLocale)
     LOAD_DB2(sArtifactTierStore);
     LOAD_DB2(sArtifactUnlockStore);
     LOAD_DB2(sAuctionHouseStore);
+    LOAD_DB2(sAzeriteEmpoweredItemStore);
+    LOAD_DB2(sAzeriteEssenceStore);
+    LOAD_DB2(sAzeriteEssencePowerStore);
+    LOAD_DB2(sAzeriteItemStore);
+    LOAD_DB2(sAzeriteItemMilestonePowerStore);
+    LOAD_DB2(sAzeriteKnowledgeMultiplierStore);
+    LOAD_DB2(sAzeriteLevelInfoStore);
+    LOAD_DB2(sAzeritePowerStore);
+    LOAD_DB2(sAzeritePowerSetMemberStore);
+    LOAD_DB2(sAzeriteTierUnlockStore);
+    LOAD_DB2(sAzeriteTierUnlockSetStore);
+    LOAD_DB2(sAzeriteUnlockMappingStore);
     LOAD_DB2(sBankBagSlotPricesStore);
     LOAD_DB2(sBannedAddonsStore);
     LOAD_DB2(sBarberShopStyleStore);
@@ -671,6 +717,7 @@ void DB2Manager::LoadStores(std::string const& dataPath, uint32 defaultLocale)
     LOAD_DB2(sSkillRaceClassInfoStore);
     LOAD_DB2(sSoundKitStore);
     LOAD_DB2(sSpecializationSpellsStore);
+    LOAD_DB2(sSpecSetMemberStore);
     LOAD_DB2(sSpellAuraOptionsStore);
     LOAD_DB2(sSpellAuraRestrictionsStore);
     LOAD_DB2(sSpellCastTimesStore);
@@ -745,6 +792,45 @@ void DB2Manager::LoadStores(std::string const& dataPath, uint32 defaultLocale)
 
     for (ArtifactPowerRankEntry const* artifactPowerRank : sArtifactPowerRankStore)
         _artifactPowerRanks[std::pair<uint32, uint8>{ artifactPowerRank->ArtifactPowerID, artifactPowerRank->RankIndex }] = artifactPowerRank;
+
+    for (AzeriteEmpoweredItemEntry const* azeriteEmpoweredItem : sAzeriteEmpoweredItemStore)
+        _azeriteEmpoweredItems[azeriteEmpoweredItem->ItemID] = azeriteEmpoweredItem;
+
+    for (AzeriteEssencePowerEntry const* azeriteEssencePower : sAzeriteEssencePowerStore)
+        _azeriteEssencePowersByIdAndRank[std::pair<uint32, uint32>{ azeriteEssencePower->AzeriteEssenceID, azeriteEssencePower->Tier }] = azeriteEssencePower;
+
+    for (AzeriteItemMilestonePowerEntry const* azeriteItemMilestonePower : sAzeriteItemMilestonePowerStore)
+        _azeriteItemMilestonePowers.push_back(azeriteItemMilestonePower);
+
+    std::sort(_azeriteItemMilestonePowers.begin(), _azeriteItemMilestonePowers.end(), [](AzeriteItemMilestonePowerEntry const* a1, AzeriteItemMilestonePowerEntry const* a2)
+    {
+        return a1->RequiredLevel < a2->RequiredLevel;
+    });
+
+    {
+        uint32 azeriteEssenceSlot = 0;
+        for (AzeriteItemMilestonePowerEntry const* azeriteItemMilestonePower : _azeriteItemMilestonePowers)
+        {
+            AzeriteItemMilestoneType type = AzeriteItemMilestoneType(azeriteItemMilestonePower->Type);
+            if (type == AzeriteItemMilestoneType::MajorEssence || type == AzeriteItemMilestoneType::MinorEssence)
+            {
+                ASSERT(azeriteEssenceSlot < MAX_AZERITE_ESSENCE_SLOT);
+                _azeriteItemMilestonePowerByEssenceSlot[azeriteEssenceSlot] = azeriteItemMilestonePower;
+                ++azeriteEssenceSlot;
+            }
+        }
+    }
+
+    for (AzeritePowerSetMemberEntry const* azeritePowerSetMember : sAzeritePowerSetMemberStore)
+        if (sAzeritePowerStore.LookupEntry(azeritePowerSetMember->AzeritePowerID))
+            _azeritePowers[azeritePowerSetMember->AzeritePowerSetID].push_back(azeritePowerSetMember);
+
+    for (AzeriteTierUnlockEntry const* azeriteTierUnlock : sAzeriteTierUnlockStore)
+        _azeriteTierUnlockLevels[std::pair<uint32, ItemContext>{ azeriteTierUnlock->AzeriteTierUnlockSetID, ItemContext(azeriteTierUnlock->ItemCreationContext) }][azeriteTierUnlock->Tier] = azeriteTierUnlock->AzeriteLevel;
+
+    std::unordered_map<int32, std::vector<AzeriteUnlockMappingEntry const*>> azeriteUnlockMappings;
+    for (AzeriteUnlockMappingEntry const* azeriteUnlockMapping : sAzeriteUnlockMappingStore)
+        azeriteUnlockMappings[azeriteUnlockMapping->AzeriteUnlockMappingSetID].push_back(azeriteUnlockMapping);
 
     ASSERT(BATTLE_PET_SPECIES_MAX_ID >= sBattlePetSpeciesStore.GetNumRows(),
         "BATTLE_PET_SPECIES_MAX_ID (%d) must be equal to or greater than %u", BATTLE_PET_SPECIES_MAX_ID, sBattlePetSpeciesStore.GetNumRows());
@@ -918,6 +1004,9 @@ void DB2Manager::LoadStores(std::string const& dataPath, uint32 defaultLocale)
     for (ItemXBonusTreeEntry const* itemBonusTreeAssignment : sItemXBonusTreeStore)
         _itemToBonusTree.insert({ itemBonusTreeAssignment->ItemID, itemBonusTreeAssignment->ItemBonusTreeID });
 
+    for (auto&& kvp : _azeriteEmpoweredItems)
+        LoadAzeriteEmpoweredItemUnlockMappings(azeriteUnlockMappings, kvp.first);
+
     for (MapDifficultyEntry const* entry : sMapDifficultyStore)
         _mapDifficulties[entry->MapID][entry->DifficultyID] = entry;
     _mapDifficulties[0][0] = _mapDifficulties[1][0]; // map 0 is missing from MapDifficulty.dbc so we cheat a bit
@@ -1035,6 +1124,9 @@ void DB2Manager::LoadStores(std::string const& dataPath, uint32 defaultLocale)
 
     for (SpecializationSpellsEntry const* specSpells : sSpecializationSpellsStore)
         _specializationSpellsBySpec[specSpells->SpecID].push_back(specSpells);
+
+    for (SpecSetMemberEntry const* specSetMember : sSpecSetMemberStore)
+        _specsBySpecSet.insert(std::make_pair(specSetMember->SpecSetID, uint32(specSetMember->ChrSpecializationID)));
 
     for (SpellClassOptionsEntry const* classOption : sSpellClassOptionsStore)
         _spellFamilyNames.insert(classOption->SpellClassSet);
@@ -1433,6 +1525,55 @@ ArtifactPowerRankEntry const* DB2Manager::GetArtifactPowerRank(uint32 artifactPo
         return itr->second;
 
     return nullptr;
+}
+
+AzeriteEmpoweredItemEntry const* DB2Manager::GetAzeriteEmpoweredItem(uint32 itemId) const
+{
+    return Trinity::Containers::MapGetValuePtr(_azeriteEmpoweredItems, itemId);
+}
+
+bool DB2Manager::IsAzeriteItem(uint32 itemId) const
+{
+    return std::find_if(sAzeriteItemStore.begin(), sAzeriteItemStore.end(),
+        [&](AzeriteItemEntry const* azeriteItem) { return azeriteItem->ItemID == int32(itemId); }) != sAzeriteItemStore.end();
+}
+
+AzeriteEssencePowerEntry const* DB2Manager::GetAzeriteEssencePower(uint32 azeriteEssenceId, uint32 rank) const
+{
+    return Trinity::Containers::MapGetValuePtr(_azeriteEssencePowersByIdAndRank, std::make_pair(azeriteEssenceId, rank));
+}
+
+std::vector<AzeriteItemMilestonePowerEntry const*> const& DB2Manager::GetAzeriteItemMilestonePowers() const
+{
+    return _azeriteItemMilestonePowers;
+}
+
+AzeriteItemMilestonePowerEntry const* DB2Manager::GetAzeriteItemMilestonePower(uint8 slot) const
+{
+    ASSERT(slot < MAX_AZERITE_ESSENCE_SLOT, "Slot %u must be lower than MAX_AZERITE_ESSENCE_SLOT (%u)", uint32(slot), MAX_AZERITE_ESSENCE_SLOT);
+    return _azeriteItemMilestonePowerByEssenceSlot[slot];
+}
+
+std::vector<AzeritePowerSetMemberEntry const*> const* DB2Manager::GetAzeritePowers(uint32 itemId) const
+{
+    if (AzeriteEmpoweredItemEntry const* azeriteEmpoweredItem = GetAzeriteEmpoweredItem(itemId))
+        return Trinity::Containers::MapGetValuePtr(_azeritePowers, azeriteEmpoweredItem->AzeritePowerSetID);
+
+    return nullptr;
+}
+
+uint32 DB2Manager::GetRequiredAzeriteLevelForAzeritePowerTier(uint32 azeriteUnlockSetId, ItemContext context, uint32 tier) const
+{
+    ASSERT(tier < MAX_AZERITE_EMPOWERED_TIER);
+    if (std::array<uint8, MAX_AZERITE_EMPOWERED_TIER> const* levels = Trinity::Containers::MapGetValuePtr(_azeriteTierUnlockLevels, std::make_pair(azeriteUnlockSetId, context)))
+        return (*levels)[tier];
+
+    AzeriteTierUnlockSetEntry const* azeriteTierUnlockSet = sAzeriteTierUnlockSetStore.LookupEntry(azeriteUnlockSetId);
+    if (azeriteTierUnlockSet && azeriteTierUnlockSet->Flags & AZERITE_TIER_UNLOCK_SET_FLAG_DEFAULT)
+        if (std::array<uint8, MAX_AZERITE_EMPOWERED_TIER> const* levels = Trinity::Containers::MapGetValuePtr(_azeriteTierUnlockLevels, std::make_pair(azeriteUnlockSetId, ItemContext::NONE)))
+            return (*levels)[tier];
+
+    return sAzeriteLevelInfoStore.GetNumRows();
 }
 
 char const* DB2Manager::GetBroadcastTextValue(BroadcastTextEntry const* broadcastText, LocaleConstant locale /*= DEFAULT_LOCALE*/, uint8 gender /*= GENDER_MALE*/, bool forceGender /*= false*/)
@@ -1871,17 +2012,12 @@ uint32 DB2Manager::GetItemBonusListForItemLevelDelta(int16 delta) const
     return 0;
 }
 
-std::set<uint32> DB2Manager::GetItemBonusTree(uint32 itemId, uint32 itemContext) const
+template<typename Visitor>
+void VisitItemBonusTree(uint32 itemId, Visitor visitor)
 {
-    std::set<uint32> bonusListIDs;
-
-    ItemSparseEntry const* proto = sItemSparseStore.LookupEntry(itemId);
-    if (!proto)
-        return bonusListIDs;
-
     auto itemIdRange = _itemToBonusTree.equal_range(itemId);
     if (itemIdRange.first == itemIdRange.second)
-        return bonusListIDs;
+        return;
 
     for (auto itemTreeItr = itemIdRange.first; itemTreeItr != itemIdRange.second; ++itemTreeItr)
     {
@@ -1891,47 +2027,111 @@ std::set<uint32> DB2Manager::GetItemBonusTree(uint32 itemId, uint32 itemContext)
 
         for (ItemBonusTreeNodeEntry const* bonusTreeNode : treeItr->second)
         {
-            if (bonusTreeNode->ItemContext != itemContext)
-                continue;
+            visitor(bonusTreeNode);
+        }
+    }
+}
 
-            if (bonusTreeNode->ChildItemBonusListID)
+std::set<uint32> DB2Manager::GetItemBonusTree(uint32 itemId, ItemContext itemContext) const
+{
+    std::set<uint32> bonusListIDs;
+
+    ItemSparseEntry const* proto = sItemSparseStore.LookupEntry(itemId);
+    if (!proto)
+        return bonusListIDs;
+
+    VisitItemBonusTree(itemId, [this, proto, itemContext, &bonusListIDs](ItemBonusTreeNodeEntry const* bonusTreeNode)
+    {
+        if (ItemContext(bonusTreeNode->ItemContext) != itemContext)
+            return;
+
+        if (bonusTreeNode->ChildItemBonusListID)
+        {
+            bonusListIDs.insert(bonusTreeNode->ChildItemBonusListID);
+        }
+        else if (bonusTreeNode->ChildItemLevelSelectorID)
+        {
+            ItemLevelSelectorEntry const* selector = sItemLevelSelectorStore.LookupEntry(bonusTreeNode->ChildItemLevelSelectorID);
+            if (!selector)
+                return;
+
+            int16 delta = int16(selector->MinItemLevel) - proto->ItemLevel;
+
+            if (uint32 bonus = GetItemBonusListForItemLevelDelta(delta))
+                bonusListIDs.insert(bonus);
+
+            if (ItemLevelSelectorQualitySetEntry const* selectorQualitySet = sItemLevelSelectorQualitySetStore.LookupEntry(selector->ItemLevelSelectorQualitySetID))
             {
-                bonusListIDs.insert(bonusTreeNode->ChildItemBonusListID);
-            }
-            else if (bonusTreeNode->ChildItemLevelSelectorID)
-            {
-                ItemLevelSelectorEntry const* selector = sItemLevelSelectorStore.LookupEntry(bonusTreeNode->ChildItemLevelSelectorID);
-                if (!selector)
-                    continue;
-
-                int16 delta = int16(selector->MinItemLevel) - proto->ItemLevel;
-
-                if (uint32 bonus = GetItemBonusListForItemLevelDelta(delta))
-                    bonusListIDs.insert(bonus);
-
-                if (ItemLevelSelectorQualitySetEntry const* selectorQualitySet = sItemLevelSelectorQualitySetStore.LookupEntry(selector->ItemLevelSelectorQualitySetID))
+                auto itemSelectorQualities = _itemLevelQualitySelectorQualities.find(selector->ItemLevelSelectorQualitySetID);
+                if (itemSelectorQualities != _itemLevelQualitySelectorQualities.end())
                 {
-                    auto itemSelectorQualities = _itemLevelQualitySelectorQualities.find(selector->ItemLevelSelectorQualitySetID);
-                    if (itemSelectorQualities != _itemLevelQualitySelectorQualities.end())
-                    {
-                        ItemQualities quality = ITEM_QUALITY_UNCOMMON;
-                        if (selector->MinItemLevel >= selectorQualitySet->IlvlEpic)
-                            quality = ITEM_QUALITY_EPIC;
-                        else if (selector->MinItemLevel >= selectorQualitySet->IlvlRare)
-                            quality = ITEM_QUALITY_RARE;
+                    ItemQualities quality = ITEM_QUALITY_UNCOMMON;
+                    if (selector->MinItemLevel >= selectorQualitySet->IlvlEpic)
+                        quality = ITEM_QUALITY_EPIC;
+                    else if (selector->MinItemLevel >= selectorQualitySet->IlvlRare)
+                        quality = ITEM_QUALITY_RARE;
 
-                        auto itemSelectorQuality = std::lower_bound(itemSelectorQualities->second.begin(), itemSelectorQualities->second.end(),
-                            quality, ItemLevelSelectorQualityEntryComparator{});
+                    auto itemSelectorQuality = std::lower_bound(itemSelectorQualities->second.begin(), itemSelectorQualities->second.end(),
+                        quality, ItemLevelSelectorQualityEntryComparator{});
 
-                        if (itemSelectorQuality != itemSelectorQualities->second.end())
-                            bonusListIDs.insert((*itemSelectorQuality)->QualityItemBonusListID);
-                    }
+                    if (itemSelectorQuality != itemSelectorQualities->second.end())
+                        bonusListIDs.insert((*itemSelectorQuality)->QualityItemBonusListID);
+                }
+            }
+
+            if (AzeriteUnlockMappingEntry const* azeriteUnlockMapping = Trinity::Containers::MapGetValuePtr(_azeriteUnlockMappings, std::make_pair(proto->ID, itemContext)))
+            {
+                switch (proto->InventoryType)
+                {
+                    case INVTYPE_HEAD:
+                        bonusListIDs.insert(azeriteUnlockMapping->ItemBonusListHead);
+                        break;
+                    case INVTYPE_SHOULDERS:
+                        bonusListIDs.insert(azeriteUnlockMapping->ItemBonusListShoulders);
+                        break;
+                    case INVTYPE_CHEST:
+                    case INVTYPE_ROBE:
+                        bonusListIDs.insert(azeriteUnlockMapping->ItemBonusListChest);
+                        break;
                 }
             }
         }
-    }
+    });
 
     return bonusListIDs;
+}
+
+void LoadAzeriteEmpoweredItemUnlockMappings(std::unordered_map<int32, std::vector<AzeriteUnlockMappingEntry const*>> const& azeriteUnlockMappingsBySet, uint32 itemId)
+{
+    ItemSparseEntry const* proto = sItemSparseStore.LookupEntry(itemId);
+    if (!proto)
+        return;
+
+    VisitItemBonusTree(itemId, [&azeriteUnlockMappingsBySet, proto](ItemBonusTreeNodeEntry const* bonusTreeNode)
+    {
+        if (!bonusTreeNode->ChildItemBonusListID && bonusTreeNode->ChildItemLevelSelectorID)
+        {
+            ItemLevelSelectorEntry const* selector = sItemLevelSelectorStore.LookupEntry(bonusTreeNode->ChildItemLevelSelectorID);
+            if (!selector)
+                return;
+
+            if (std::vector<AzeriteUnlockMappingEntry const*> const* azeriteUnlockMappings = Trinity::Containers::MapGetValuePtr(azeriteUnlockMappingsBySet, selector->AzeriteUnlockMappingSet))
+            {
+                AzeriteUnlockMappingEntry const* selectedAzeriteUnlockMapping = nullptr;
+                for (AzeriteUnlockMappingEntry const* azeriteUnlockMapping : *azeriteUnlockMappings)
+                {
+                    if (azeriteUnlockMapping->ItemLevel > selector->MinItemLevel ||
+                        (selectedAzeriteUnlockMapping != nullptr && selectedAzeriteUnlockMapping->ItemLevel > azeriteUnlockMapping->ItemLevel))
+                        continue;
+
+                    selectedAzeriteUnlockMapping = azeriteUnlockMapping;
+                }
+
+                if (selectedAzeriteUnlockMapping)
+                    _azeriteUnlockMappings[std::make_pair(proto->ID, ItemContext(bonusTreeNode->ItemContext))] = selectedAzeriteUnlockMapping;
+            }
+        }
+    });
 }
 
 ItemChildEquipmentEntry const* DB2Manager::GetItemChildEquipment(uint32 itemId) const
@@ -2374,6 +2574,11 @@ std::vector<SpecializationSpellsEntry const*> const* DB2Manager::GetSpecializati
         return &itr->second;
 
     return nullptr;
+}
+
+bool DB2Manager::IsSpecSetMember(int32 specSetId, uint32 specId) const
+{
+    return _specsBySpecSet.count(std::make_pair(specSetId, specId)) > 0;
 }
 
 bool DB2Manager::IsValidSpellFamiliyName(SpellFamilyNames family)

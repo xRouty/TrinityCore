@@ -19,6 +19,8 @@
 #include "Spell.h"
 #include "AccountMgr.h"
 #include "AreaTrigger.h"
+#include "AzeriteEmpoweredItem.h"
+#include "AzeriteItem.h"
 #include "Battleground.h"
 #include "BattlegroundMgr.h"
 #include "BattlePetMgr.h"
@@ -75,7 +77,7 @@
 #include "WorldPacket.h"
 #include "WorldSession.h"
 
-pEffect SpellEffects[TOTAL_SPELL_EFFECTS]=
+NonDefaultConstructible<pEffect> SpellEffects[TOTAL_SPELL_EFFECTS] =
 {
     &Spell::EffectNULL,                                     //  0
     &Spell::EffectInstaKill,                                //  1 SPELL_EFFECT_INSTAKILL
@@ -336,12 +338,19 @@ pEffect SpellEffects[TOTAL_SPELL_EFFECTS]=
     &Spell::EffectNULL,                                     //256 SPELL_EFFECT_256
     &Spell::EffectNULL,                                     //257 SPELL_EFFECT_257
     &Spell::EffectNULL,                                     //258 SPELL_EFFECT_MODIFY_KEYSTONE
-    &Spell::EffectNULL,                                     //259 SPELL_EFFECT_RESPEC_AZERITE_EMPOWERED_ITEM
+    &Spell::EffectRespecAzeriteEmpoweredItem,               //259 SPELL_EFFECT_RESPEC_AZERITE_EMPOWERED_ITEM
     &Spell::EffectNULL,                                     //260 SPELL_EFFECT_SUMMON_STABLED_PET
     &Spell::EffectNULL,                                     //261 SPELL_EFFECT_SCRAP_ITEM
     &Spell::EffectNULL,                                     //262 SPELL_EFFECT_262
     &Spell::EffectNULL,                                     //263 SPELL_EFFECT_REPAIR_ITEM
     &Spell::EffectNULL,                                     //264 SPELL_EFFECT_REMOVE_GEM
+    &Spell::EffectLearnAzeriteEssencePower,                 //265 SPELL_EFFECT_LEARN_AZERITE_ESSENCE_POWER
+    &Spell::EffectNULL,                                     //266 SPELL_EFFECT_266
+    &Spell::EffectNULL,                                     //267 SPELL_EFFECT_267
+    &Spell::EffectNULL,                                     //268 SPELL_EFFECT_APPLY_MOUNT_EQUIPMENT
+    &Spell::EffectNULL,                                     //269 SPELL_EFFECT_UPGRADE_ITEM
+    &Spell::EffectNULL,                                     //270 SPELL_EFFECT_270
+    &Spell::EffectNULL,                                     //271 SPELL_EFFECT_APPLY_AREA_AURA_PARTY_NONRANDOM
 };
 
 void Spell::EffectNULL(SpellEffIndex /*effIndex*/)
@@ -1317,7 +1326,7 @@ void Spell::EffectHealthLeech(SpellEffIndex /*effIndex*/)
     }
 }
 
-void Spell::DoCreateItem(uint32 /*i*/, uint32 itemtype, uint8 context /*= 0*/, std::vector<int32> const& bonusListIDs /*= std::vector<int32>()*/)
+void Spell::DoCreateItem(uint32 /*i*/, uint32 itemtype, ItemContext context /*= ItemContext::NONE*/, std::vector<int32> const& bonusListIDs /*= std::vector<int32>()*/)
 {
     if (!unitTarget || unitTarget->GetTypeId() != TYPEID_PLAYER)
         return;
@@ -1425,7 +1434,7 @@ void Spell::EffectCreateItem(SpellEffIndex effIndex)
     if (effectHandleMode != SPELL_EFFECT_HANDLE_HIT_TARGET)
         return;
 
-    DoCreateItem(effIndex, effectInfo->ItemType);
+    DoCreateItem(effIndex, effectInfo->ItemType, m_spellInfo->HasAttribute(SPELL_ATTR0_TRADESPELL) ? ItemContext::Trade_Skill : ItemContext::NONE);
     ExecuteLogEffectCreateItem(effIndex, effectInfo->ItemType);
 }
 
@@ -1440,9 +1449,10 @@ void Spell::EffectCreateItem2(SpellEffIndex effIndex)
     Player* player = unitTarget->ToPlayer();
 
     uint32 item_id = effectInfo->ItemType;
+    ItemContext context = m_spellInfo->HasAttribute(SPELL_ATTR0_TRADESPELL) ? ItemContext::Trade_Skill : ItemContext::NONE;
 
     if (item_id)
-        DoCreateItem(effIndex, item_id);
+        DoCreateItem(effIndex, item_id, context);
 
     // special case: fake item replaced by generate using spell_loot_template
     if (m_spellInfo->IsLootCrafting())
@@ -1457,10 +1467,10 @@ void Spell::EffectCreateItem2(SpellEffIndex effIndex)
             player->DestroyItemCount(item_id, count, true);
 
             // create some random items
-            player->AutoStoreLoot(m_spellInfo->Id, LootTemplates_Spell);
+            player->AutoStoreLoot(m_spellInfo->Id, LootTemplates_Spell, context);
         }
         else
-            player->AutoStoreLoot(m_spellInfo->Id, LootTemplates_Spell);    // create some random items
+            player->AutoStoreLoot(m_spellInfo->Id, LootTemplates_Spell, context);    // create some random items
 
         player->UpdateCraftSkill(m_spellInfo->Id);
     }
@@ -1477,7 +1487,7 @@ void Spell::EffectCreateRandomItem(SpellEffIndex /*effIndex*/)
     Player* player = unitTarget->ToPlayer();
 
     // create some random items
-    player->AutoStoreLoot(m_spellInfo->Id, LootTemplates_Spell);
+    player->AutoStoreLoot(m_spellInfo->Id, LootTemplates_Spell, m_spellInfo->HasAttribute(SPELL_ATTR0_TRADESPELL) ? ItemContext::Trade_Skill : ItemContext::NONE);
     /// @todo ExecuteLogEffectCreateItem(i, m_spellInfo->Effects[i].ItemType);
 }
 
@@ -1501,7 +1511,7 @@ void Spell::EffectPersistentAA(SpellEffIndex effIndex)
             return;
         }
 
-        if (Aura* aura = Aura::TryCreate(m_spellInfo, m_castId, MAX_EFFECT_MASK, dynObj, caster, &m_spellValue->EffectBasePoints[0], nullptr, ObjectGuid::Empty, ObjectGuid::Empty, m_castItemLevel))
+        if (Aura* aura = Aura::TryCreate(m_spellInfo, m_castId, MAX_EFFECT_MASK, dynObj, caster, &m_spellValue->EffectBasePoints[0], nullptr, ObjectGuid::Empty, ObjectGuid::Empty, m_castItemEntry, m_castItemLevel))
         {
             m_spellAura = aura;
             m_spellAura->_RegisterForTargets();
@@ -1780,7 +1790,7 @@ void Spell::EffectSummonChangeItem(SpellEffIndex /*effIndex*/)
 
     uint16 pos = m_CastItem->GetPos();
 
-    Item* pNewItem = Item::CreateItem(newitemid, 1, player);
+    Item* pNewItem = Item::CreateItem(newitemid, 1, m_CastItem->GetContext(), player);
     if (!pNewItem)
         return;
 
@@ -2373,7 +2383,8 @@ void Spell::EffectEnchantItemPerm(SpellEffIndex effIndex)
         player->DestroyItemCount(itemTarget, count, true);
         unitTarget = player;
         // and add a scroll
-        DoCreateItem(effIndex, effectInfo->ItemType);
+        damage = 1;
+        DoCreateItem(effIndex, effectInfo->ItemType, m_spellInfo->HasAttribute(SPELL_ATTR0_TRADESPELL) ? ItemContext::Trade_Skill : ItemContext::NONE);
         itemTarget = NULL;
         m_targets.SetItemTarget(NULL);
     }
@@ -5588,7 +5599,7 @@ void Spell::EffectCreateHeirloomItem(SpellEffIndex effIndex)
     std::vector<int32> bonusList;
     bonusList.push_back(collectionMgr->GetHeirloomBonus(m_misc.Raw.Data[0]));
 
-    DoCreateItem(effIndex, m_misc.Raw.Data[0], 0, bonusList);
+    DoCreateItem(effIndex, m_misc.Raw.Data[0], ItemContext::NONE, bonusList);
     ExecuteLogEffectCreateItem(effIndex, m_misc.Raw.Data[0]);
 }
 
@@ -5809,4 +5820,71 @@ void Spell::EffectLearnTransmogSet(SpellEffIndex /*effIndex*/)
         return;
 
     unitTarget->ToPlayer()->GetSession()->GetCollectionMgr()->AddTransmogSet(effectInfo->MiscValue);
+}
+
+void Spell::EffectRespecAzeriteEmpoweredItem(SpellEffIndex /*effIndex*/)
+{
+    if (effectHandleMode != SPELL_EFFECT_HANDLE_HIT_TARGET)
+        return;
+
+    if (!itemTarget || !itemTarget->IsAzeriteEmpoweredItem())
+        return;
+
+    Player* owner = m_caster->ToPlayer();
+    if (!owner)
+        return;
+
+    AzeriteEmpoweredItem* azeriteEmpoweredItem = itemTarget->ToAzeriteEmpoweredItem();
+    owner->ModifyMoney(-azeriteEmpoweredItem->GetRespecCost());
+
+    // reapply all item mods - item level change affects stats and auras
+    if (azeriteEmpoweredItem->IsEquipped())
+        owner->_ApplyItemMods(azeriteEmpoweredItem, azeriteEmpoweredItem->GetSlot(), false);
+
+    azeriteEmpoweredItem->ClearSelectedAzeritePowers();
+
+    if (azeriteEmpoweredItem->IsEquipped())
+        owner->_ApplyItemMods(azeriteEmpoweredItem, azeriteEmpoweredItem->GetSlot(), true);
+
+    azeriteEmpoweredItem->SetState(ITEM_CHANGED, owner);
+    owner->SetNumRespecs(owner->GetNumRespecs() + 1);
+}
+
+void Spell::EffectLearnAzeriteEssencePower(SpellEffIndex /*effIndex*/)
+{
+    if (effectHandleMode != SPELL_EFFECT_HANDLE_HIT_TARGET)
+        return;
+
+    Player* playerTarget = unitTarget ? unitTarget->ToPlayer() : nullptr;
+    if (!playerTarget)
+        return;
+
+    Item* heartOfAzeroth = playerTarget->GetItemByEntry(ITEM_ID_HEART_OF_AZEROTH, ITEM_SEARCH_EVERYWHERE);
+    if (!heartOfAzeroth)
+        return;
+
+    AzeriteItem* azeriteItem = heartOfAzeroth->ToAzeriteItem();
+    if (!azeriteItem)
+        return;
+
+    // remove old rank and apply new one
+    if (azeriteItem->IsEquipped())
+    {
+        if (UF::SelectedAzeriteEssences const* selectedEssences = azeriteItem->GetSelectedAzeriteEssences())
+        {
+            for (int32 slot = 0; slot < MAX_AZERITE_ESSENCE_SLOT; ++slot)
+            {
+                if (selectedEssences->AzeriteEssenceID[slot] == uint32(effectInfo->MiscValue))
+                {
+                    bool major = AzeriteItemMilestoneType(sDB2Manager.GetAzeriteItemMilestonePower(slot)->Type) == AzeriteItemMilestoneType::MajorEssence;
+                    playerTarget->ApplyAzeriteEssence(azeriteItem, effectInfo->MiscValue, MAX_AZERITE_ESSENCE_RANK, major, false);
+                    playerTarget->ApplyAzeriteEssence(azeriteItem, effectInfo->MiscValue, effectInfo->MiscValueB, major, false);
+                    break;
+                }
+            }
+        }
+    }
+
+    azeriteItem->SetEssenceRank(effectInfo->MiscValue, effectInfo->MiscValueB);
+    azeriteItem->SetState(ITEM_CHANGED, playerTarget);
 }
